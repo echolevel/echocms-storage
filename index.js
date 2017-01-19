@@ -11,7 +11,7 @@ app.set('port', (process.env.PORT || 5000));
 var compress = multer.diskStorage({
   destination: function(req, file, callback) {
     
-    callback(null, './uploads');
+    callback(null, './tmp/uploads');
   },
   filename: function(req, file, callback) {
     console.log(file);
@@ -22,7 +22,7 @@ var compress = multer.diskStorage({
 var resize = multer.diskStorage({
   destination: function(req, file, callback) {
     
-    callback(null, './uploads');
+    callback(null, './tmp/uploads');
   },
   filename: function(req, file, callback) {
     console.log(file);
@@ -61,7 +61,7 @@ app.post('/api/optimresize',function(req,res){
         var temppath = __dirname + '/resized/' + req.file.originalname;
         sharp(req.file.path).resize(700).withoutEnlargement(true).toFile(temppath).then( data => {
         
-          imagemin([temppath], './compressed', {
+          imagemin([temppath], './tmp/compressed', {
             plugins : [
               imageminMozjpeg(),
               imageminPngquant({quality: '65-90'})
@@ -103,7 +103,7 @@ app.post('/api/optimonly',function(req,res){
         //console.log(req);
         console.log("logging filename: " );
         
-          imagemin([req.file.path], './compressed', {
+          imagemin([req.file.path], './tmp/compressed', {
             plugins : [
               imageminMozjpeg(),
               imageminPngquant({quality: '65-90'})
