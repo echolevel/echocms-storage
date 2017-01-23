@@ -71,7 +71,7 @@ app.post('/api/upload', function(req, res) {
   
   console.log(req.body.apiKey);
   
-  fs.writeFileSync('./tmpkey.json', JSON.stringify(req.body.keyfile), function(err) {
+  fs.writeFile('./tmpkey.json', JSON.stringify(req.body.keyfile), function(err) {
     if(err){
       console.log("File write error for keyfile: " + err);
       res.send("File write error for keyfile: " + err);
