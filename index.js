@@ -22,6 +22,7 @@ app.all('*', function(req, res, next) {
 app.use(multer({ dest: './uploads'}).single('file'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
+app.use(allowCrossDomain);
 
 app.post('/api/test', function(req, res) {
   console.log(req.body);
