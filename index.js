@@ -70,171 +70,156 @@ app.post('/api/delete', function(req, res) {
 app.post('/api/upload', function(req, res) {
   
   console.log(req.body.apiKey);
-  var gcloud, gcs, bucket;
   
-  fs.writeFile('./tmpkey.json', JSON.stringify(req.body.keyfile), function(err) {
-    if(err){
-      console.log("File write error for keyfile: " + err);
-      res.send("File write error for keyfile: " + err);
+  var gcloud = require('google-cloud')({
+    projectID: req.body.storageBucket.split('.')[0],
+    credentials: req.keyfile.path
+  })
+  var gcs = gcloud.storage();
+  var bucket = gcs.bucket(req.body.storageBucket);
+  
+  bucket.exists(function(err, exists) {
+    if(!err) {
+      console.log("bucket exists");      
     } else {
-      gcloud = require('google-cloud')({
-        projectID: req.body.storageBucket.split('.')[0],
-        credentials: './tmpkey.json'
-      })
-      gcs = gcloud.storage();
-      bucket = gcs.bucket(req.body.storageBucket);
-      processImage();
+      console.log("bucket doesn't exist: " + err);
     }
   })
   
+  if(parseInt(req.query.rsz) > 0) {
+    var thumbsize = parseInt(req.query.rsz);
+  } else {
+    var thumbsize = 250;
+  }
+  if(req.query.dir.length) {
+    var targetdir = req.query.dir + '/';
+  } else {
+    var targetdir = 'imgstore/';
+  }
+  var stamp = Date.now();
+
   
-  var processImage = function() {
+  if(req.file.mimetype == 'image/jpeg' || req.file.mimetype == 'image/png') {
   
-    bucket.exists(function(err, exists) {
-      if(!err) {
-        console.log("bucket exists");      
-      } else {
-        console.log("bucket doesn't exist: " + err);
+    async.parallel({
+      opt_max: function(callback) {
+        //do things
+        // No resizing, just optimise, upload, then return URL as result
+        
+        var outurl;
+        sharp(req.file.path).withoutEnlargement(true).toBuffer(function(err, buff) {
+          if(err) {
+            res.send(err);
+          } else {
+            imagemin.buffer(buff, {
+              plugins : [
+                imageminMozjpeg(),
+                imageminPngquant({quality: '65-90'})
+              ]
+            }).then(function(data){
+              // Upload the optimised, unresized file
+              var maxfile = bucket.file(targetdir + stamp + '_' + req.file.originalname);
+              var maxstream = maxfile.createWriteStream({
+                metadata: {
+                  contentType: req.file.mimetype
+                }
+              })
+              .on('error', function(err) { console.log(err)})
+              .on('finish', function() {
+                  maxfile.makePublic().then(function(data) {
+                    outurl = 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname;              
+                    callback(null, outurl);
+                  })
+              })
+              maxstream.end(data);        
+            }, function(err) {
+              console.log(err);
+            })
+          }
+        });                
+        
+      },
+      opt_thumb: function(callback) {
+        //do things
+        // Resize them optimise, upload, then return URL as result
+        
+        var outurl;
+        sharp(req.file.path).resize(thumbsize).withoutEnlargement(true).toBuffer(function(err, buff) {
+          if(err) {
+            res.send(err);
+          } else {
+            imagemin.buffer(buff, {
+              plugins : [
+                imageminMozjpeg(),
+                imageminPngquant({quality: '65-90'})
+              ]
+            }).then(function(data){
+              // Upload the optimised, unresized file
+              var thumbfile = bucket.file(targetdir + stamp + '_thumb_' + req.file.originalname);
+              var thumbstream = thumbfile.createWriteStream({
+                metadata: {
+                  contentType: req.file.mimetype
+                }
+              })
+              .on('error', function(err) { console.log(err)})
+              .on('finish', function() {
+                  thumbfile.makePublic().then(function(data) {
+                    outurl = 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_thumb_' + req.file.originalname;              
+                    callback(null, outurl);
+                  })
+              })
+              thumbstream.end(data);        
+            }, function(err) {
+              console.log(err);
+            })
+          }
+        });
+        
+        
+      }
+    },
+    function(err, results) {
+      // All functions finished.
+      // results is: {opt_max: "result1", opt_thumb: "result2"}
+      locationObj = results;
+      locationObj.orig_name = req.file.originalname;
+      locationObj.thumb_width = thumbsize
+      res.send(locationObj);
+      clearDir('./uploads', false);
+    });
+  
+  } else if(req.file.mimetype == 'image/gif' || req.file.mimetype == 'image/bmp') {
+    // No optimisation or thumbnailing; upload and return location in both opt_max and opt_thumb fields
+    // TO DO
+    var storedfile = bucket.file(targetdir + stamp + '_' + req.file.originalname);
+    var storedstream = storedfile.createWriteStream({
+      metadata: {
+        contentType: req.file.mimetype
       }
     })
-  
-    if(parseInt(req.query.rsz) > 0) {
-      var thumbsize = parseInt(req.query.rsz);
-    } else {
-      var thumbsize = 250;
-    }
-    if(req.query.dir.length) {
-      var targetdir = req.query.dir + '/';
-    } else {
-      var targetdir = 'imgstore/';
-    }
-    var stamp = Date.now();
-
-  
-    if(req.file.mimetype == 'image/jpeg' || req.file.mimetype == 'image/png') {
-  
-      async.parallel({
-        opt_max: function(callback) {
-          //do things
-          // No resizing, just optimise, upload, then return URL as result
-        
-          var outurl;
-          sharp(req.file.path).withoutEnlargement(true).toBuffer(function(err, buff) {
-            if(err) {
-              res.send(err);
-            } else {
-              imagemin.buffer(buff, {
-                plugins : [
-                  imageminMozjpeg(),
-                  imageminPngquant({quality: '65-90'})
-                ]
-              }).then(function(data){
-                // Upload the optimised, unresized file
-                var maxfile = bucket.file(targetdir + stamp + '_' + req.file.originalname);
-                var maxstream = maxfile.createWriteStream({
-                  metadata: {
-                    contentType: req.file.mimetype
-                  }
-                })
-                .on('error', function(err) { console.log(err)})
-                .on('finish', function() {
-                    maxfile.makePublic().then(function(data) {
-                      outurl = 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname;              
-                      callback(null, outurl);
-                    })
-                })
-                maxstream.end(data);        
-              }, function(err) {
-                console.log(err);
-              })
-            }
-          });                
-        
-        },
-        opt_thumb: function(callback) {
-          //do things
-          // Resize them optimise, upload, then return URL as result
-        
-          var outurl;
-          sharp(req.file.path).resize(thumbsize).withoutEnlargement(true).toBuffer(function(err, buff) {
-            if(err) {
-              res.send(err);
-            } else {
-              imagemin.buffer(buff, {
-                plugins : [
-                  imageminMozjpeg(),
-                  imageminPngquant({quality: '65-90'})
-                ]
-              }).then(function(data){
-                // Upload the optimised, unresized file
-                var thumbfile = bucket.file(targetdir + stamp + '_thumb_' + req.file.originalname);
-                var thumbstream = thumbfile.createWriteStream({
-                  metadata: {
-                    contentType: req.file.mimetype
-                  }
-                })
-                .on('error', function(err) { console.log(err)})
-                .on('finish', function() {
-                    thumbfile.makePublic().then(function(data) {
-                      outurl = 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_thumb_' + req.file.originalname;              
-                      callback(null, outurl);
-                    })
-                })
-                thumbstream.end(data);        
-              }, function(err) {
-                console.log(err);
-              })
-            }
-          });
-        
-        
+    .on('error', function(err) { console.log(err)})
+    .on('finish', function() {
+      storedfile.makePublic().then(function(data) {
+        outobj = {
+          opt_max: 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname,
+          opt_thumb: 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname,
+          orig_name: req.file.originalname,
+          thumb_width: thumbsize
         }
-      },
-      function(err, results) {
-        // All functions finished.
-        // results is: {opt_max: "result1", opt_thumb: "result2"}
-        locationObj = results;
-        locationObj.orig_name = req.file.originalname;
-        locationObj.thumb_width = thumbsize
-        res.send(locationObj);
+        res.send(outobj);
         clearDir('./uploads', false);
-      });
-  
-    } else if(req.file.mimetype == 'image/gif' || req.file.mimetype == 'image/bmp') {
-      // No optimisation or thumbnailing; upload and return location in both opt_max and opt_thumb fields
-      // TO DO
-      var storedfile = bucket.file(targetdir + stamp + '_' + req.file.originalname);
-      var storedstream = storedfile.createWriteStream({
-        metadata: {
-          contentType: req.file.mimetype
-        }
       })
-      .on('error', function(err) { console.log(err)})
-      .on('finish', function() {
-        storedfile.makePublic().then(function(data) {
-          outobj = {
-            opt_max: 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname,
-            opt_thumb: 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname,
-            orig_name: req.file.originalname,
-            thumb_width: thumbsize
-          }
-          res.send(outobj);
-          clearDir('./uploads', false);
-        })
-      })
-      fs.readFile(req.file.path, function(err, data) {
-        if(err){
-          console.log(err);
-        } else {
-          storedstream.end(data);
-        }
-      })
-    }
-    
+    })
+    fs.readFile(req.file.path, function(err, data) {
+      if(err){
+        console.log(err);
+      } else {
+        storedstream.end(data);
+      }
+    })
   }
+  
 
-  
-  
 })
 
 
