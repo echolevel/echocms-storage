@@ -1,38 +1,16 @@
 const imagemin = require('imagemin');
 const imageminMozjpeg = require('imagemin-mozjpeg');
 const imageminPngquant = require('imagemin-pngquant');
+const fs = require('fs');
 var multer = require('multer');
 var express = require('express');
 var app = express();
 var path = require('path');
 var sharp = require('sharp');
-app.set('port', (process.env.PORT || 5000));
-
-var compress = multer.diskStorage({
-  destination: function(req, file, callback) {
-    
-    callback(null, './tmp/uploads');
-  },
-  filename: function(req, file, callback) {
-    console.log(file);
-    callback(null, 'opt_' + file.originalname);
-  }
-})
-
-var resize = multer.diskStorage({
-  destination: function(req, file, callback) {
-    
-    callback(null, './tmp/uploads');
-  },
-  filename: function(req, file, callback) {
-    console.log(file);
-    callback(null, 'thumb_' + file.originalname);
-  }
-})
-
-var optimOnly = multer({ storage: compress}, {limits: {fileSize: 10000}}).single('file');
-var optimResize = multer({ storage: resize}, {limits: {fileSize: 10000}}).single('file');
-
+var bodyParser = require('body-parser');
+var async = require('async');
+var request = require('request');
+ 
 app.all('*', function(req, res, next) {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'PUT, GET, POST, DELETE, OPTIONS');
@@ -40,98 +18,233 @@ app.all('*', function(req, res, next) {
   next();
 });
 
-app.use(express.static(__dirname + '/public'));
 
-// views is directory for all template files
-app.set('views', __dirname + '/views');
-app.set('view engine', 'ejs');
+app.use(multer({ dest: './uploads'}).single('file'));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({extended: true}));
 
-app.get('/', function(request, response) {
-  response.render('pages/index');
-});
+app.post('/api/test', function(req, res) {
+  console.log(req.body);
+  /*
+  request({
+      url: 'https://www.googleapis.com/upload/storage/v1/b/' + req.body.storageBucket + '/o?uploadType=media&name=testName'
+    })*/
+  
+})
 
-// Resizes PNG and JPG to some maximum width, then optimises. Use for (big) thumbnails.
-app.post('/api/optimresize',function(req,res){
-    optimResize(req,res,function(err) {
-        if(err) {
-            return res.end("Error uploading file: " + err);
-        }
-        //console.log(req);
-        console.log("logging filename: " );
-        var temppath = __dirname + '/resized/' + req.file.originalname;
-        sharp(req.file.path).resize(700).withoutEnlargement(true).toFile(temppath).then( data => {
+app.post('/api/delete', function(req, res) {
+
+  var gcloud = require('google-cloud')({
+    projectID: req.body.storageBucket.split('.')[0],
+    key: req.body.apiKey
+  })
+  var gcs = gcloud.storage();
+  var bucket = gcs.bucket(req.body.storageBucket);
+  
+  bucket.exists(function(err, exists) {
+    if(!err) {
+      console.log("bucket exists");      
+    } else {
+      console.log("bucket doesn't exist: " + err);
+    }
+  })
+
+  var target = bucket.file(req.query.target);
+
+  target.delete(function(err, apiResponse) {
+      if(err) {
+        console.log(err)
+        res.send(err);
+      } else {
+        console.log(apiResponse);
+        res.send(apiResponse);
+      }
+    })
+  
+})
+
+
+app.post('/api/upload', function(req, res) {
+  
+  console.log(req.body.apiKey);
+  
+  var gcloud = require('google-cloud')({
+    projectID: req.body.storageBucket.split('.')[0],
+    key: req.body.apiKey
+  })
+  var gcs = gcloud.storage();
+  var bucket = gcs.bucket(req.body.storageBucket);
+  
+  bucket.exists(function(err, exists) {
+    if(!err) {
+      console.log("bucket exists");      
+    } else {
+      console.log("bucket doesn't exist: " + err);
+    }
+  })
+  
+  if(parseInt(req.query.rsz) > 0) {
+    var thumbsize = parseInt(req.query.rsz);
+  } else {
+    var thumbsize = 250;
+  }
+  if(req.query.dir.length) {
+    var targetdir = req.query.dir + '/';
+  } else {
+    var targetdir = 'imgstore/';
+  }
+  var stamp = Date.now();
+
+  
+  if(req.file.mimetype == 'image/jpeg' || req.file.mimetype == 'image/png') {
+  
+    async.parallel({
+      opt_max: function(callback) {
+        //do things
+        // No resizing, just optimise, upload, then return URL as result
         
-          imagemin([temppath], './tmp/compressed', {
-            plugins : [
-              imageminMozjpeg(),
-              imageminPngquant({quality: '65-90'})
-            ]
-          }).then(files => {
-            //console.log(files);
-            console.log(__dirname + '/' + files[0].path)
-            var ext = files[0].path.substring(files[0].path.lastIndexOf('.')+1, files[0].path.length).toLowerCase();
-            var type = "";
-            if(ext == 'png') {
-              type = "image/png";
-            } else if(ext == 'jpg' || ext == 'jpeg') {
-              type = "image/jpeg";
-            }
-            var options = {
-              headers: {
-                'Content-Type' : type
-              }
-            }
-            res.sendFile(__dirname + '/' + files[0].path, options);          
-          
-          }).catch(err => {
-            console.log(err);
-          });
-
-        }).catch(err => {
-          console.log(err);
+        var outurl;
+        sharp(req.file.path).withoutEnlargement(true).toBuffer(function(err, buff) {
+          if(err) {
+            res.send(err);
+          } else {
+            imagemin.buffer(buff, {
+              plugins : [
+                imageminMozjpeg(),
+                imageminPngquant({quality: '65-90'})
+              ]
+            }).then(function(data){
+              // Upload the optimised, unresized file
+              var maxfile = bucket.file(targetdir + stamp + '_' + req.file.originalname);
+              var maxstream = maxfile.createWriteStream({
+                metadata: {
+                  contentType: req.file.mimetype
+                }
+              })
+              .on('error', function(err) { console.log(err)})
+              .on('finish', function() {
+                  maxfile.makePublic().then(function(data) {
+                    outurl = 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname;              
+                    callback(null, outurl);
+                  })
+              })
+              maxstream.end(data);        
+            }, function(err) {
+              console.log(err);
+            })
+          }
+        });                
+        
+      },
+      opt_thumb: function(callback) {
+        //do things
+        // Resize them optimise, upload, then return URL as result
+        
+        var outurl;
+        sharp(req.file.path).resize(thumbsize).withoutEnlargement(true).toBuffer(function(err, buff) {
+          if(err) {
+            res.send(err);
+          } else {
+            imagemin.buffer(buff, {
+              plugins : [
+                imageminMozjpeg(),
+                imageminPngquant({quality: '65-90'})
+              ]
+            }).then(function(data){
+              // Upload the optimised, unresized file
+              var thumbfile = bucket.file(targetdir + stamp + '_thumb_' + req.file.originalname);
+              var thumbstream = thumbfile.createWriteStream({
+                metadata: {
+                  contentType: req.file.mimetype
+                }
+              })
+              .on('error', function(err) { console.log(err)})
+              .on('finish', function() {
+                  thumbfile.makePublic().then(function(data) {
+                    outurl = 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_thumb_' + req.file.originalname;              
+                    callback(null, outurl);
+                  })
+              })
+              thumbstream.end(data);        
+            }, function(err) {
+              console.log(err);
+            })
+          }
         });
-
-    });
-});
-
-// Optimises PNG and JPG, but no cropping. Use for storing original resolution.
-app.post('/api/optimonly',function(req,res){
-    optimOnly(req,res,function(err) {
-        if(err) {
-            return res.end("Error uploading file: " + err);
-        }
-        //console.log(req);
-        console.log("logging filename: " );
         
-          imagemin([req.file.path], './tmp/compressed', {
-            plugins : [
-              imageminMozjpeg(),
-              imageminPngquant({quality: '65-90'})
-            ]
-          }).then(files => {
-            //console.log(files);
-            console.log(__dirname + '/' + files[0].path)
-            var ext = files[0].path.substring(files[0].path.lastIndexOf('.')+1, files[0].path.length).toLowerCase();
-            var type = "";
-            if(ext == 'png') {
-              type = "image/png";
-            } else if(ext == 'jpg' || ext == 'jpeg') {
-              type = "image/jpeg";
-            }
-            var options = {
-              headers: {
-                'Content-Type' : type
-              }
-            }
-            res.sendFile(__dirname + '/' + files[0].path, options);          
-          
-          })
-
+        
+      }
+    },
+    function(err, results) {
+      // All functions finished.
+      // results is: {opt_max: "result1", opt_thumb: "result2"}
+      locationObj = results;
+      locationObj.orig_name = req.file.originalname;
+      locationObj.thumb_width = thumbsize
+      res.send(locationObj);
+      clearDir('./uploads', false);
     });
-});
+  
+  } else if(req.file.mimetype == 'image/gif' || req.file.mimetype == 'image/bmp') {
+    // No optimisation or thumbnailing; upload and return location in both opt_max and opt_thumb fields
+    // TO DO
+    var storedfile = bucket.file(targetdir + stamp + '_' + req.file.originalname);
+    var storedstream = storedfile.createWriteStream({
+      metadata: {
+        contentType: req.file.mimetype
+      }
+    })
+    .on('error', function(err) { console.log(err)})
+    .on('finish', function() {
+      storedfile.makePublic().then(function(data) {
+        outobj = {
+          opt_max: 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname,
+          opt_thumb: 'https://storage.googleapis.com/' + req.body.storageBucket + '/' + targetdir + stamp + '_' + req.file.originalname,
+          orig_name: req.file.originalname,
+          thumb_width: thumbsize
+        }
+        res.send(outobj);
+        clearDir('./uploads', false);
+      })
+    })
+    fs.readFile(req.file.path, function(err, data) {
+      if(err){
+        console.log(err);
+      } else {
+        storedstream.end(data);
+      }
+    })
+  }
+  
 
-app.listen(app.get('port'), function() {
-  console.log('Node app is running on port', app.get('port'));
-});
+})
 
 
+var clearDir = function(dirPath, removeSelf) {
+  if (removeSelf === undefined)
+    removeSelf = true;
+  try { var files = fs.readdirSync(dirPath); }
+  catch(e) { return; }
+  if (files.length > 0)
+    for (var i = 0; i < files.length; i++) {
+      var filePath = dirPath + '/' + files[i];
+      if (fs.statSync(filePath).isFile())
+        fs.unlinkSync(filePath);
+      else
+        rmDir(filePath);
+    }
+  if (removeSelf)
+    fs.rmdirSync(dirPath);
+};
+
+
+
+app.get('/', function(req, res) {
+  //res.send('Got a GET request');
+  res.sendFile(__dirname + "/index.html");
+})
+
+
+app.listen(8086, function() {
+  console.log('Listening on 8086');
+})

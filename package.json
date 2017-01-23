@@ -10,14 +10,18 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "async": "^2.1.4",
+    "body-parser": "^1.16.0",
     "cool-ascii-faces": "1.3.4",
     "ejs": "2.4.1",
     "express": "^4.13.3",
+    "google-cloud": "^0.45.2",
     "imagemin": "^5.2.2",
     "imagemin-mozjpeg": "^6.0.0",
     "imagemin-pngquant": "^5.0.0",
     "multer": "^1.2.1",
     "path": "^0.12.7",
+    "request": "^2.79.0",
     "sharp": "^0.17.1"
   },
   "repository": {
