@@ -23,48 +23,13 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 
 
-app.post('/api/delete', function(req, res) {
-
-  var projID = req.body.storageBucket.split('.')[0];
-  
-  fs.rename(req.files[0].path, './uploads/' + projID + '_auth.json', function(err) {
-    if(err) console.log("Error renaming json file " + err);
-  })
-
-  var gcloud = require('google-cloud')({
-    projectID: req.body.storageBucket.split('.')[0],
-    keyFilename: './uploads/' + projID + '_auth.json'
-  })
-  var gcs = gcloud.storage();
-  var bucket = gcs.bucket(req.body.storageBucket);
-  
-  bucket.exists(function(err, exists) {
-    if(!err) {
-      console.log("bucket exists");      
-    } else {
-      console.log("bucket doesn't exist: " + err);
-    }
-  })
-
-  var target = bucket.file(req.query.target);
-
-  target.delete(function(err, apiResponse) {
-      if(err) {
-        console.log(err)
-        res.send(err);
-      } else {
-        console.log(apiResponse);
-        res.send(apiResponse);
-      }
-    })
-  
-})
-
-
 app.post('/api/upload', function(req, res) {
     
     var projID = req.body.storageBucket.split('.')[0];
     
+    // The contents of a Google Cloud service account keyfile are written to a file (otherwise google-cloud refuses
+    // to accept the credentials). The file needs a .json extension, even if the mimetype is properly set. What a 
+    // pain. It's written to a temp directory but deleted along with temporary image files later in this block.
     fs.rename(req.files[1].path, './uploads/' + projID + '_auth.json', function(err) {
       if(err) console.log("Error renaming json file " + err);
     })
@@ -87,11 +52,13 @@ app.post('/api/upload', function(req, res) {
     if(parseInt(req.query.rsz) > 0) {
       var thumbsize = parseInt(req.query.rsz);
     } else {
+      // Default thumbnail width if not specified as a request param
       var thumbsize = 250;
     }
     if(req.query.dir.length) {
       var targetdir = req.query.dir + '/';
     } else {
+      // Default bucket subdirectory if not specified as a request param
       var targetdir = 'imgstore/';
     }
     var stamp = Date.now();
@@ -101,7 +68,7 @@ app.post('/api/upload', function(req, res) {
     
       async.parallel({
         opt_max: function(callback) {
-          //do things
+
           // No resizing, just optimise, upload, then return URL as result
           
           var outurl;
@@ -138,7 +105,7 @@ app.post('/api/upload', function(req, res) {
           
         },
         opt_thumb: function(callback) {
-          //do things
+
           // Resize them optimise, upload, then return URL as result
           
           var outurl;
@@ -177,7 +144,7 @@ app.post('/api/upload', function(req, res) {
         }
       },
       function(err, results) {
-        // All functions finished.
+        // All processing functions finished.
         // results is: {opt_max: "result1", opt_thumb: "result2"}
         locationObj = results;
         locationObj.orig_name = req.files[0].originalname;
@@ -188,7 +155,6 @@ app.post('/api/upload', function(req, res) {
     
     } else if(req.files[0].mimetype == 'image/gif' || req.files[0].mimetype == 'image/bmp') {
       // No optimisation or thumbnailing; upload and return location in both opt_max and opt_thumb fields
-      // TO DO
       var storedfile = bucket.file(targetdir + stamp + '_' + req.files[0].originalname);
       var storedstream = storedfile.createWriteStream({
         metadata: {
@@ -216,9 +182,45 @@ app.post('/api/upload', function(req, res) {
         }
       })
     }
-    
-  
 
+})
+
+
+app.post('/api/delete', function(req, res) {
+
+  var projID = req.body.storageBucket.split('.')[0];
+  
+  fs.rename(req.files[0].path, './uploads/' + projID + '_auth.json', function(err) {
+    if(err) console.log("Error renaming json file " + err);
+  })
+
+  var gcloud = require('google-cloud')({
+    projectID: req.body.storageBucket.split('.')[0],
+    keyFilename: './uploads/' + projID + '_auth.json'
+  })
+  var gcs = gcloud.storage();
+  var bucket = gcs.bucket(req.body.storageBucket);
+  
+  bucket.exists(function(err, exists) {
+    if(!err) {
+      console.log("bucket exists");      
+    } else {
+      console.log("bucket doesn't exist: " + err);
+    }
+  })
+
+  var target = bucket.file(req.query.target);
+
+  target.delete(function(err, apiResponse) {
+      if(err) {
+        console.log(err)
+        res.send(err);
+      } else {
+        console.log(apiResponse);
+        res.send(apiResponse);
+      }
+    })
+  
 })
 
 
@@ -242,11 +244,10 @@ var clearDir = function(dirPath, removeSelf) {
 
 
 app.get('/', function(req, res) {
-  //res.send('Got a GET request');
-  res.sendFile(__dirname + "/index.html");
+  res.send('Nothing is here.');  
 })
 
 
 app.listen(process.env.PORT || 8086, function() {
-  console.log('Listening on 8086');
+  console.log('Listening on' + process.env.PORT || 8086);
 })
