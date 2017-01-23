@@ -27,6 +27,7 @@ app.use(bodyParser.urlencoded({extended: true}));
 app.post('/api/test', function(req, res) {
   console.log(req.body);
   res.send(req.body);
+  
   /*
   request({
       url: 'https://www.googleapis.com/upload/storage/v1/b/' + req.body.storageBucket + '/o?uploadType=media&name=testName'
