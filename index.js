@@ -73,7 +73,7 @@ app.post('/api/upload', function(req, res) {
   
   var gcloud = require('google-cloud')({
     projectID: req.body.storageBucket.split('.')[0],
-    key: req.body.apiKey
+    credentials: req.body.keyfile
   })
   var gcs = gcloud.storage();
   var bucket = gcs.bucket(req.body.storageBucket);
