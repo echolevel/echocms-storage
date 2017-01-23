@@ -69,7 +69,7 @@ app.post('/api/delete', function(req, res) {
 
 app.post('/api/upload', function(req, res) {
   
-  console.log(req.body.apiKey);
+  console.log(req.file);
   
   var gcloud = require('google-cloud')({
     projectID: req.body.storageBucket.split('.')[0],
