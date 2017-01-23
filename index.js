@@ -248,6 +248,6 @@ app.get('/', function(req, res) {
 })
 
 
-app.listen(8086, function() {
+app.listen(process.env.PORT || 8086, function() {
   console.log('Listening on 8086');
 })
