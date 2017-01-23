@@ -1,3 +1,17 @@
+/*
+  EchoCMS Storage Manager by Brendan Ratliff - http://echolevel.co.uk
+
+  API for generating thumbnails and optimising/compressing JPG/PNG files then uploading them to Google Cloud Storage
+  and returning publicly accessible filenames. GIF, BMP and audio/video files are uploaded directly with no processing.
+  POST requests to /upload take an image file, a target GCS bucket name and the contents of a Google service account
+  authentication keyfile. Requests to /delete take the bucket name, the keyfile, and the URL of the file to be deleted.
+
+  Written for my AngularJS/Firebase CMS web app. The Node Firebase package does everything except Storage, which is why
+  I had to use the incredibly frustrating google-cloud package.... Having to upload the keyfile data then write it to 
+  a temp file is a pain on the client-side and an ungraceful solution on the server-side, but that's just how it is.
+
+*/
+
 const imagemin = require('imagemin');
 const imageminMozjpeg = require('imagemin-mozjpeg');
 const imageminPngquant = require('imagemin-pngquant');
