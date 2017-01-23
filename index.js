@@ -18,25 +18,22 @@ app.all('*', function(req, res, next) {
   next();
 });
 
-
 app.use(multer({ dest: './uploads'}).array('files', 2));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 
-app.post('/api/test', function(req, res) {
-  console.log(req.body);
-  /*
-  request({
-      url: 'https://www.googleapis.com/upload/storage/v1/b/' + req.body.storageBucket + '/o?uploadType=media&name=testName'
-    })*/
-  
-})
 
 app.post('/api/delete', function(req, res) {
 
+  var projID = req.body.storageBucket.split('.')[0];
+  
+  fs.rename(req.files[0].path, './uploads/' + projID + '_auth.json', function(err) {
+    if(err) console.log("Error renaming json file " + err);
+  })
+
   var gcloud = require('google-cloud')({
     projectID: req.body.storageBucket.split('.')[0],
-    key: req.body.apiKey
+    keyFilename: './uploads/' + projID + '_auth.json'
   })
   var gcs = gcloud.storage();
   var bucket = gcs.bucket(req.body.storageBucket);
@@ -65,16 +62,16 @@ app.post('/api/delete', function(req, res) {
 
 
 app.post('/api/upload', function(req, res) {
-  
-  console.log(req.files[1].path);
     
-    fs.rename(req.files[1].path, './uploads/AUTH.json', function(err) {
+    var projID = req.body.storageBucket.split('.')[0];
+    
+    fs.rename(req.files[1].path, './uploads/' + projID + '_auth.json', function(err) {
       if(err) console.log("Error renaming json file " + err);
     })
   
     var gcloud = require('google-cloud')({
       projectID: req.body.storageBucket.split('.')[0],
-      keyFilename: './uploads/AUTH.json'
+      keyFilename: './uploads/' + projID + '_auth.json'
     })
     var gcs = gcloud.storage();
     var bucket = gcs.bucket(req.body.storageBucket);
