@@ -1,6 +1,7 @@
 /*
   EchoCMS Storage Manager by Brendan Ratliff - http://echolevel.co.uk
 
+
   API for generating thumbnails and optimising/compressing JPG/PNG files then uploading them to Google Cloud Storage
   and returning publicly accessible filenames. GIF, BMP and audio/video files are uploaded directly with no processing.
   POST requests to /upload take an image file, a target GCS bucket name and the contents of a Google service account
