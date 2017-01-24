@@ -12,3 +12,4 @@ The CMS is AngularJS driven and Firebase backed. Sadly, the Firebase module for 
 
 Not as elegant as I'd like, but it's been a nice way to learn about Node.JS and Express. I'll update this readme soon with details of how I'm making the requests from the CMS, in case it's of use to anybody.
 
+Currently my site is hosted on RedHat Openshift while this storage API is running on Heroku and the database/files are on Firebase. Not many people look at my site, and I don't update it more than a dozen times a month, so it's a great sandbox for trying stuff out while keeping beneath all those free-tier thresholds. 
